@@ -29,6 +29,7 @@ class DatGateway {
       maxAge
     })
     this.server = http.createServer((req, res) => {
+      req.url = req.url.replace('http://', '/')
       log('%s %s', req.method, req.url)
       // TODO redirect /:key to /:key/
       let urlParts = req.url.split('/')
