@@ -83,7 +83,7 @@ class DatGateway {
         } else {
           this.cache.set(key, dat)
           dat.joinNetwork()
-          dat.onrequest = hyperdriveHttp(dat.archive, { live: true, exposeHeaders: true })
+          dat.onrequest = hyperdriveHttp(dat.archive, { live: false, exposeHeaders: true })
           dat.archive.metadata.update(() => {
             resolve(dat)
           })
