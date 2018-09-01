@@ -1,6 +1,10 @@
 'use strict'
 
-const DatLibrarian = require('dat-librarian')
+const hyperdrive = require('hyperdrive')
+const archiver = require('hypercore-archiver')
+const swarm = require('hypercore-archiver/swarm')
+const dns = require('dat-dns')()
+const ram = require('random-access-memory')
 const fs = require('fs')
 const http = require('http')
 const hyperdriveHttp = require('hyperdrive-http')
@@ -22,13 +26,11 @@ function log () {
 }
 
 module.exports =
-class DatGateway extends DatLibrarian {
-  constructor ({ dir, dat, max, net, period, ttl, redirect }) {
-    dat = dat || {}
-    if (typeof dat.temp === 'undefined') {
-      dat.temp = dat.temp || true // store dats in memory only
-    }
-    super({ dir, dat, net })
+class DatGateway {
+  constructor ({ dir, max, period, ttl, redirect }) {
+    this.ar = archiver(dir)
+    swarm(this.ar)
+    this.dats = new Map()
     this.redirect = redirect
     this.max = max
     this.ttl = ttl
@@ -61,11 +63,60 @@ class DatGateway extends DatLibrarian {
         perMessageDeflate: false,
         server: this.server
       }, websocketHandler)
-    }).then(() => {
-      log('Loading pre-existing archives...')
-      // load pre-existing archives
-      return super.load()
     })
+  }
+
+  get(key) {
+    return new Promise((resolve, reject) => {
+      if (this.dats.has(key)) {
+        const archive = this.dats.get(key)
+        archive.ready(() => {
+          resolve({
+            archive,
+          })
+        })
+        return
+      }
+      this.ar.get(key, (err, metadata, content) => {
+        if (err) {
+          reject(err)
+          return
+        }
+        const drive = hyperdrive(ram, key, {
+          metadata,
+          content,
+        })
+        drive.key = metadata.key
+        this.dats.set(key, drive)
+        resolve({
+          archive: drive,
+        })
+      });
+    })
+  }
+
+  remove(key) {
+    return new Promise((resolve, reject) => {
+      this.dats.delete(key)
+      this.ar.remove(key, (err) => {
+        if (err) {
+          return reject(err)
+        }
+        resolve()
+      })
+    });
+  }
+
+  list () {
+    return Object.keys(this.dats)
+  }
+
+  get keys () {
+    return this.list()
+  }
+
+  close() {
+
   }
 
   /**
@@ -114,8 +165,7 @@ class DatGateway extends DatLibrarian {
         return Promise.resolve()
       }
       return this.addIfNew(address).then((dat) => {
-        const archive = dat.archive
-        const replication = archive.replicate({
+        const replication = this.ar.replicate({
           live: true
         })
 
@@ -159,7 +209,7 @@ class DatGateway extends DatLibrarian {
 
         // redirect to subdomain
         if (!isRedirecting && this.redirect) {
-          return DatLibrarian.resolve(address).then((resolvedAddress) => {
+          return dns.resolveName(address).then((resolvedAddress) => {
             // TODO: Detect DatDNS addresses
             let encodedAddress = hexTo32.encode(resolvedAddress)
             let redirectURL = `http://${encodedAddress}.${urlParts.host}/${path}${urlParts.search || ''}`
@@ -178,7 +228,7 @@ class DatGateway extends DatLibrarian {
 
         // Return a Dat DNS entry without fetching it from the archive
         if (path === '.well-known/dat') {
-          return DatLibrarian.resolve(address).then((resolvedAddress) => {
+          return dns.resolveName(address).then((resolvedAddress) => {
             log('Resolving address %s to %s', address, resolvedAddress)
 
             res.writeHead(200)
@@ -214,9 +264,9 @@ class DatGateway extends DatLibrarian {
   }
 
   addIfNew (address) {
-    return DatLibrarian.resolve(address).then((key) => {
+    return dns.resolveName(address).then((key) => {
       if (this.keys.indexOf(key) === -1) {
-        return this.add(address)
+        return this.add(key)
       } else {
         this.lru[key] = Date.now()
         return this.get(key)
@@ -232,12 +282,22 @@ class DatGateway extends DatLibrarian {
     return this.remove(oldest)
   }
 
-  add () {
+  add(key) {
     if (this.keys.length >= this.max) {
       // Delete the oldest item when we reach capacity and try again
       return this.clearOldest().then(() => this.add.apply(this, arguments))
     }
-    return super.add.apply(this, arguments).then((dat) => {
+    return new Promise((resolve, reject) => {
+      this.ar.add(key, (err) => {
+        if (err) {
+          reject(err)
+          return
+        }
+        resolve()
+      })
+    })
+    .then(() => this.get(key))
+    .then((dat) => {
       log('Adding HTTP handler to archive...')
       if (!dat.onrequest) dat.onrequest = hyperdriveHttp(dat.archive, { live: true, exposeHeaders: true })
       return new Promise((resolve) => {

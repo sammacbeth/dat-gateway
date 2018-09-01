@@ -9,8 +9,10 @@
     "test": "standard && dependency-check . --unused --no-dev && mocha"
   },
   "dependencies": {
-    "dat-librarian": "^1.1.2-alpha",
+    "dat-dns": "^3.0.2",
     "hex-to-32": "^2.0.0",
+    "hypercore-archiver": "^4.6.0",
+    "hyperdrive": "^9.14.0",
     "hyperdrive-http": "^4.2.2",
     "websocket-stream": "^5.1.2",
     "yargs": "^11.0.0"
