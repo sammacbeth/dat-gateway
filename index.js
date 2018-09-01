@@ -165,7 +165,7 @@ class DatGateway {
         return Promise.resolve()
       }
       return this.addIfNew(address).then((dat) => {
-        const replication = this.ar.replicate({
+        const replication = dat.archive.replicate({
           live: true
         })
 
