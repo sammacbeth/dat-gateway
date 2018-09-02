@@ -29,7 +29,6 @@ module.exports =
 class DatGateway {
   constructor ({ dir, max, period, ttl, redirect }) {
     this.ar = archiver(dir)
-    swarm(this.ar)
     this.dats = new Map()
     this.redirect = redirect
     this.max = max
@@ -39,7 +38,7 @@ class DatGateway {
     if (this.ttl && this.period) {
       this.cleaner = setInterval(() => {
         log('Checking for expired archives...')
-        const tasks = Object.keys(this.dats).filter((key) => {
+        const tasks = this.keys.filter((key) => {
           const now = Date.now()
           let lastRead = this.lru[key]
           return (lastRead && ((now - lastRead) > this.ttl))
@@ -63,19 +62,15 @@ class DatGateway {
         perMessageDeflate: false,
         server: this.server
       }, websocketHandler)
+      swarm(this.ar)
     })
   }
 
   get(key) {
     return new Promise((resolve, reject) => {
       if (this.dats.has(key)) {
-        const archive = this.dats.get(key)
-        archive.ready(() => {
-          resolve({
-            archive,
-          })
-        })
-        return
+        const dat = this.dats.get(key)
+        return resolve(dat)
       }
       this.ar.get(key, (err, metadata, content) => {
         if (err) {
@@ -87,9 +82,12 @@ class DatGateway {
           content,
         })
         drive.key = metadata.key
-        this.dats.set(key, drive)
-        resolve({
+        const dat = {
           archive: drive,
+        }
+        this.dats.set(key, dat)
+        drive.ready(() => {
+          resolve(dat)
         })
       });
     })
@@ -108,7 +106,7 @@ class DatGateway {
   }
 
   list () {
-    return Object.keys(this.dats)
+    return [...this.dats.keys()]
   }
 
   get keys () {
