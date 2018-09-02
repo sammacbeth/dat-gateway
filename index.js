@@ -163,7 +163,7 @@ class DatGateway {
         return Promise.resolve()
       }
       return this.addIfNew(address).then((dat) => {
-        const replication = dat.archive.replicate({
+        const replication = this.ar.replicate({
           live: true
         })
 
@@ -263,7 +263,7 @@ class DatGateway {
 
   addIfNew (address) {
     return dns.resolveName(address).then((key) => {
-      if (this.keys.indexOf(key) === -1) {
+      if (!this.dats.has(key)) {
         return this.add(key)
       } else {
         this.lru[key] = Date.now()
