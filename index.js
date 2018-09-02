@@ -30,6 +30,7 @@ class DatGateway {
   constructor ({ dir, max, period, ttl, redirect }) {
     this.ar = archiver(dir)
     this.dats = new Map()
+    this.adding = new Map();
     this.redirect = redirect
     this.max = max
     this.ttl = ttl
@@ -50,6 +51,29 @@ class DatGateway {
         return Promise.all(tasks)
       }, this.period)
     }
+    // make a hyperdrive and hyperdriveHttp for every archive added to the archiver
+    this.ar.on('add-archive', (metadata, content) => {
+      const key = metadata.key.toString('hex')
+      const drive = hyperdrive(ram, key, {
+        metadata,
+        content,
+      })
+      drive.key = metadata.key
+      const dat = {
+        archive: drive,
+      }
+
+      drive.ready(() => {
+        console.log('add-archive', key)
+        dat.onrequest = hyperdriveHttp(drive, { live: false, exposeHeaders: true })
+        this.dats.set(key, dat)
+        this.lru[key] = Date.now()
+        if (this.adding.has(key)) {
+          this.adding.get(key)(dat)
+          this.adding.delete(key)
+        }
+      })
+    });
   }
 
   load () {
@@ -66,34 +90,23 @@ class DatGateway {
     })
   }
 
-  get(key) {
-    return new Promise((resolve, reject) => {
-      if (this.dats.has(key)) {
-        const dat = this.dats.get(key)
-        return resolve(dat)
-      }
-      this.ar.get(key, (err, metadata, content) => {
-        if (err) {
-          reject(err)
-          return
-        }
-        const drive = hyperdrive(ram, key, {
-          metadata,
-          content,
-        })
-        drive.key = metadata.key
-        const dat = {
-          archive: drive,
-        }
-        this.dats.set(key, dat)
-        drive.ready(() => {
-          resolve(dat)
-        })
-      });
+  async get(key) {
+    if (this.dats.has(key)) {
+      console.log('get', key);
+      return this.dats.get(key)
+    } else if (this.adding.has(key)) {
+      return this.adding.get(key)
+    }
+    console.log('add', key);
+    const loading = new Promise((resolve) => {
+      this.ar.add(key)
+      this.adding.set(key, resolve)
     })
+    return loading
   }
 
   remove(key) {
+    console.log('remove', key);
     return new Promise((resolve, reject) => {
       this.dats.delete(key)
       this.ar.remove(key, (err) => {
@@ -285,36 +298,6 @@ class DatGateway {
       // Delete the oldest item when we reach capacity and try again
       return this.clearOldest().then(() => this.add.apply(this, arguments))
     }
-    return new Promise((resolve, reject) => {
-      this.ar.add(key, (err) => {
-        if (err) {
-          reject(err)
-          return
-        }
-        resolve()
-      })
-    })
-    .then(() => this.get(key))
-    .then((dat) => {
-      log('Adding HTTP handler to archive...')
-      if (!dat.onrequest) dat.onrequest = hyperdriveHttp(dat.archive, { live: true, exposeHeaders: true })
-      return new Promise((resolve) => {
-        /*
-        Wait for the archive to populate OR for 3s to pass,
-        so that addresses for archives which don't exist
-        don't hold us up all night.
-         */
-        let isDone = false
-        const done = () => {
-          if (isDone) return null
-          isDone = true
-          const key = dat.archive.key.toString('hex')
-          this.lru[key] = Date.now()
-          return resolve(dat)
-        }
-        dat.archive.metadata.update(1, done)
-        setTimeout(done, 3000)
-      })
-    })
+    return this.get(key)
   }
 }
