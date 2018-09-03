@@ -108,6 +108,8 @@ class DatGateway {
   remove(key) {
     console.log('remove', key);
     return new Promise((resolve, reject) => {
+      const dat = this.dats.get(key)
+      dat.archive.close()
       this.dats.delete(key)
       this.ar.remove(key, (err) => {
         if (err) {
