@@ -36,21 +36,6 @@ class DatGateway {
     this.ttl = ttl
     this.period = period
     this.lru = {}
-    if (this.ttl && this.period) {
-      this.cleaner = setInterval(() => {
-        log('Checking for expired archives...')
-        const tasks = this.keys.filter((key) => {
-          const now = Date.now()
-          let lastRead = this.lru[key]
-          return (lastRead && ((now - lastRead) > this.ttl))
-        }).map((key) => {
-          log('Deleting expired archive %s', key)
-          delete this.lru[key]
-          return this.remove(key)
-        })
-        return Promise.all(tasks)
-      }, this.period)
-    }
     // make a hyperdrive and hyperdriveHttp for every archive added to the archiver
     this.ar.on('add-archive', (metadata, content) => {
       const key = metadata.key.toString('hex')
@@ -117,6 +102,8 @@ class DatGateway {
         }
         resolve()
       })
+    }).catch((err) => {
+      console.log('error removing', key, err);
     });
   }
 
@@ -126,10 +113,6 @@ class DatGateway {
 
   get keys () {
     return this.list()
-  }
-
-  close() {
-
   }
 
   /**
@@ -151,8 +134,6 @@ class DatGateway {
     return new Promise((resolve) => {
       if (this.server) this.server.close(resolve)
       else resolve()
-    }).then(() => {
-      return super.close()
     })
   }
 
@@ -177,17 +158,18 @@ class DatGateway {
         stream.end('Must provide archive key')
         return Promise.resolve()
       }
-      return this.addIfNew(address).then((dat) => {
-        const replication = this.ar.replicate({
-          live: true
-        })
+      const replication = this.ar.replicate({
+        live: true
+      })
 
-        // Relay error events
-        replication.on('error', function (e) {
-          stream.emit('error', e)
-        })
-        stream.pipe(replication).pipe(stream)
-      }).catch((e) => {
+      // Relay error events
+      replication.on('error', function (e) {
+        stream.emit('error', e)
+      })
+      stream.pipe(replication).pipe(stream)
+
+      return this.addIfNew(address).catch((e) => {
+        console.log('error adding', e.message);
         stream.end(e.message)
       })
     }
@@ -243,7 +225,7 @@ class DatGateway {
         if (path === '.well-known/dat') {
           return dns.resolveName(address).then((resolvedAddress) => {
             log('Resolving address %s to %s', address, resolvedAddress)
-
+            this.addIfNew(resolvedAddress).catch(e => console.error('error adding', addres, e));
             res.writeHead(200)
             res.end(`dat://${resolvedAddress}\nttl=3600`)
           }).catch((e) => {
@@ -296,10 +278,10 @@ class DatGateway {
   }
 
   add(key) {
-    if (this.keys.length >= this.max) {
-      // Delete the oldest item when we reach capacity and try again
-      return this.clearOldest().then(() => this.add.apply(this, arguments))
-    }
+    // if (this.keys.length >= this.max) {
+    //   // Delete the oldest item when we reach capacity and try again
+    //   return this.clearOldest().then(() => this.add.apply(this, arguments))
+    // }
     return this.get(key)
   }
 }
