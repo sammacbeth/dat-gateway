@@ -77,16 +77,15 @@ class DatGateway {
 
   async get (key) {
     if (this.dats.has(key)) {
-      console.log('get', key)
       return this.dats.get(key)
     } else if (this.adding.has(key)) {
       return this.adding.get(key)
     }
-    console.log('add', key)
     const loading = new Promise((resolve) => {
       this.ar.add(key)
       this.adding.set(key, resolve)
     })
+    this.lru[key] = Date.now()
     return loading
   }
 
@@ -237,7 +236,13 @@ class DatGateway {
         }
 
         // return the archive
-        return this.addIfNew(address).then((dat) => {
+        const timeout = new Promise((resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('not found'))
+          }, 5000)
+        })
+
+        return Promise.race([timeout, this.addIfNew(address)]).then((dat) => {
           // handle it!!
           const end = Date.now()
           log('[%s] %s %s | OK [%i ms]', address, req.method, path, end - start)
@@ -263,7 +268,6 @@ class DatGateway {
       if (!this.dats.has(key)) {
         return this.add(key)
       } else {
-        this.lru[key] = Date.now()
         return this.get(key)
       }
     })
@@ -278,10 +282,10 @@ class DatGateway {
   }
 
   add (key) {
-    // if (this.keys.length >= this.max) {
-    //   // Delete the oldest item when we reach capacity and try again
-    //   return this.clearOldest().then(() => this.add.apply(this, arguments))
-    // }
+    if (this.dats.size >= this.max) {
+      // Delete the oldest item when we reach capacity and try again
+      return this.clearOldest().then(() => this.get(key))
+    }
     return this.get(key)
   }
 }
