@@ -30,7 +30,7 @@ class DatGateway {
   constructor ({ dir, max, period, ttl, redirect }) {
     this.ar = archiver(dir)
     this.dats = new Map()
-    this.adding = new Map();
+    this.adding = new Map()
     this.redirect = redirect
     this.max = max
     this.ttl = ttl
@@ -41,11 +41,11 @@ class DatGateway {
       const key = metadata.key.toString('hex')
       const drive = hyperdrive(ram, key, {
         metadata,
-        content,
+        content
       })
       drive.key = metadata.key
       const dat = {
-        archive: drive,
+        archive: drive
       }
 
       drive.ready(() => {
@@ -58,7 +58,7 @@ class DatGateway {
           this.adding.delete(key)
         }
       })
-    });
+    })
   }
 
   load () {
@@ -75,14 +75,14 @@ class DatGateway {
     })
   }
 
-  async get(key) {
+  async get (key) {
     if (this.dats.has(key)) {
-      console.log('get', key);
+      console.log('get', key)
       return this.dats.get(key)
     } else if (this.adding.has(key)) {
       return this.adding.get(key)
     }
-    console.log('add', key);
+    console.log('add', key)
     const loading = new Promise((resolve) => {
       this.ar.add(key)
       this.adding.set(key, resolve)
@@ -90,8 +90,8 @@ class DatGateway {
     return loading
   }
 
-  remove(key) {
-    console.log('remove', key);
+  remove (key) {
+    console.log('remove', key)
     return new Promise((resolve, reject) => {
       const dat = this.dats.get(key)
       dat.archive.close()
@@ -103,8 +103,8 @@ class DatGateway {
         resolve()
       })
     }).catch((err) => {
-      console.log('error removing', key, err);
-    });
+      console.log('error removing', key, err)
+    })
   }
 
   list () {
@@ -169,7 +169,7 @@ class DatGateway {
       stream.pipe(replication).pipe(stream)
 
       return this.addIfNew(address).catch((e) => {
-        console.log('error adding', e.message);
+        console.log('error adding', e.message)
         stream.end(e.message)
       })
     }
@@ -225,7 +225,7 @@ class DatGateway {
         if (path === '.well-known/dat') {
           return dns.resolveName(address).then((resolvedAddress) => {
             log('Resolving address %s to %s', address, resolvedAddress)
-            this.addIfNew(resolvedAddress).catch(e => console.error('error adding', addres, e));
+            this.addIfNew(resolvedAddress).catch(e => console.error('error adding', address, e))
             res.writeHead(200)
             res.end(`dat://${resolvedAddress}\nttl=3600`)
           }).catch((e) => {
@@ -277,7 +277,7 @@ class DatGateway {
     return this.remove(oldest)
   }
 
-  add(key) {
+  add (key) {
     // if (this.keys.length >= this.max) {
     //   // Delete the oldest item when we reach capacity and try again
     //   return this.clearOldest().then(() => this.add.apply(this, arguments))
