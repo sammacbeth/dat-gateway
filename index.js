@@ -49,7 +49,6 @@ class DatGateway {
       }
 
       drive.ready(() => {
-        console.log('add-archive', key)
         dat.onrequest = hyperdriveHttp(drive, { live: false, exposeHeaders: true })
         this.dats.set(key, dat)
         this.lru[key] = Date.now()
@@ -90,7 +89,6 @@ class DatGateway {
   }
 
   remove (key) {
-    console.log('remove', key)
     return new Promise((resolve, reject) => {
       const dat = this.dats.get(key)
       dat.archive.close()
@@ -102,7 +100,7 @@ class DatGateway {
         resolve()
       })
     }).catch((err) => {
-      console.log('error removing', key, err)
+      console.error('error removing', key, err)
     })
   }
 
@@ -168,7 +166,7 @@ class DatGateway {
       stream.pipe(replication).pipe(stream)
 
       return this.addIfNew(address).catch((e) => {
-        console.log('error adding', e.message)
+        console.error('error adding', e.message)
         stream.end(e.message)
       })
     }
